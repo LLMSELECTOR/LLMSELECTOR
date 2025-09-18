@@ -12,6 +12,8 @@ DESCRIPTION = '''Placeholder.
 DIAGNOSEPROMPT = '''Placeholder.
 '''
 
+MAX_NUMBER_MODULES = 100000000
+
 class CompoundAI(object):
     def __init__(self,
                 allocator = None,
@@ -22,6 +24,7 @@ class CompoundAI(object):
                 default_model = 'claude-3-5-sonnet-20240620',
                 diagnoseprompt = DIAGNOSEPROMPT,
                 description = DESCRIPTION,
+                save_history_flag=True,
                 ):
         self.allocator = allocator
         if(allocator is None):
@@ -33,6 +36,12 @@ class CompoundAI(object):
         self.default_model = default_model
         self.diagnoseprompt = diagnoseprompt
         self.description = description
+        self.return_model_i = MAX_NUMBER_MODULES
+        self.save_history_flag = save_history_flag
+        return
+    
+    def set_module_output(self, module_index=MAX_NUMBER_MODULES):
+        self.return_model_i = module_index
         return
     
     def get_diagnoseprompt(self,):
@@ -61,6 +70,7 @@ class CompoundAI(object):
         return
         
     def generate(self, query="hello", metric="",ans=""):
+        #time1 = time.time()
         c = 1
         H = []
         h = []
@@ -73,7 +83,9 @@ class CompoundAI(object):
         last_res = ""
         response_list = [query]
         bp=False
-        while(1<=c and c<=len(self.pipeline)-1 and max_search>iter):
+        max_index = min(len(self.pipeline)-1,self.return_model_i)
+
+        while(1<=c and c<=max_index and max_search>iter):
             params = [response_list[t] for t in self.pipeline[c][1]]
             # 1. Select model
             model = self.allocator.get_model(q,h,H)
@@ -87,8 +99,10 @@ class CompoundAI(object):
                 print(f"lens of H {len(H)}",c,model)
             '''
             self.pipeline[c][0].setmodel(model)
+            #time1 = time.time()
             res = self.pipeline[c][0].get_response(*params)
             response_list.append(res)
+            #print(f"the time to generate in compound ai system {time.time()-time1}")
             h.append([model,res])
             # 2. Verify the quality
             score = self.critic.judge(q,h,H,metric,ans)
@@ -133,6 +147,7 @@ class CompoundAI(object):
             
         #H_unique = [list(item) for item in set(tuple(sublist) for sublist in H)]
         #print(f"History length {len(H)}")
+        #print(f"c is {c} and return_model_i is {self.return_model_i}")
         if(max_search<=iter):
             model_usage = last_full
             res = res
@@ -140,6 +155,9 @@ class CompoundAI(object):
         if(not(self.postprocess is None)):
             res = self.postprocess(query,res)
         self.save_history(q=query,t=h,h=H,response_list=response_list)
+        
+        #print(f"the end-to-end time to compoundaisystem.generate {time.time()-time1}")
+            
         return res
 
     def generate_naive(self, query="hello"):
@@ -165,6 +183,8 @@ class CompoundAI(object):
         return self.pipeline
 
     def save_history(self,q,t,h,response_list):
+        if(self.save_history_flag==False):
+            return
         self.q = q
         self.t = t
         self.h = h

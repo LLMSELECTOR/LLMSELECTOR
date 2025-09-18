@@ -7,11 +7,41 @@ Below is the description of a compound AI system, a query, the generations from 
 
 {data}
 
-Does module {i} cause the mismatch between the desired answer and the true answer? Remember that the desired answer is 100% correct. You should first analyze carefully why the final answer could be wrong, just by looking at the question and the true answer. Next, based on your analysis, figure out which module might be wrong. Do not attempt to directly solve any subtasks, in order to avoid your own biases.
+Does module {i} cause the mismatch between the desired answer and the true answer? Remember that the desired answer is absolutely correct. You should first analyze carefully why the final answer could be wrong, just by looking at the question and the true answer. Next, based on your analysis, figure out which module might be wrong. Do not attempt to directly solve any subtasks, in order to avoid your own biases.
 
+You must analyze the system step by step first and then give your final answer.
 
 If module {i} is indeed the issue, format your final decision as ‘[final answer: Yes]’. Otherwise, format it as ’[final answer: No]’. If the final output matches the desired answer, generate '[correct answer]'.
 '''
+
+DIAGNOSE_TEMPLATE = '''
+You are an expert in troubleshooting multi-module AI systems.
+
+Below you will find:
+{data}
+
+Your task
+Determine whether MODULE {i} is responsible for the discrepancy between the system’s final output and the desired (ground-truth) answer.
+
+Guidelines
+
+Take the desired answer as absolutely correct.
+Follow the judgment approach provided in the diagnosis examples.
+Do not attempt to solve any subtasks yourself.
+Reason step by step first, and then generate the final answer by the following format.
+
+Decision format
+• If MODULE {i} is the likely source of the error, output exactly:
+[final answer: Yes]
+
+• If the error is more plausibly due to another module, output exactly:
+[final answer: No]
+
+• If the final output already matches the desired answer, output exactly:
+[correct answer]
+
+'''
+
 
 def extract_final_answer(text):
     # Remove special characters and spaces
@@ -36,7 +66,10 @@ class Diagnoser(object):
 
                 ):
         self.diagnoise_model = diagnose_model
+        self.prompt = "None"
         return
+    def get_prompt(self):
+        return self.prompt
         
     def diagnose(self,
                  compoundaisystem:dict,
@@ -55,16 +88,23 @@ class Diagnoser(object):
         description is a text describing the system
         module contains the output from each module. 
         '''
+        #print(f"** generate data")
         data = self._generate_data(
                        compoundaisystem=compoundaisystem,
                        query=query,
                        answer=answer,
                        true_answer=true_answer,
         )
+        #print(f"** generate prompt")
         prompt = diagnose_template.format(data=data,i=module_id)
+        self.prompt=prompt
         #prompt += f'[Your analysis]:'
+        #print(f"********* show_prompt is {show_prompt}")
         if(show_prompt):
-            print(f'prompt is {prompt}')
+            #print(f"query is {query}")
+            #print(f"answer is {answer}")
+            print(f'***prompt*** {prompt}')
+        #return 0
         analysis = Get_Generate(prompt,self.diagnoise_model,temperature=temperature)
         #print(f"analysis is {analysis}")
 #        error = re.search(r'error:\s*(0|1)', analysis, re.IGNORECASE)

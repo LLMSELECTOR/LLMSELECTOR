@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from .llm import Get_Generate
 import numpy as np
 
-def compute_score(compoundaisystems, data_df, metric):
+def compute_score(compoundaisystems, data_df, metric,true_answer_name='true_answer',save_answer_prefix="answer",answer_convert=None):
     # Define the function for one row
     def process_row(row):
         return ai_system.generate(row['query'], metric, row['true_answer'])
@@ -39,7 +39,7 @@ def compute_score(compoundaisystems, data_df, metric):
 
 
     # Apply the function with multi-threading, a progress bar, and order preservation
-    def apply_multithreaded_with_progress_ordered(df, func, num_threads=8):
+    def apply_multithreaded_with_progress_ordered(df, func, num_threads=20):
         results = [None] * len(df)  # Initialize a list to hold results in the correct order
         # Reset the index of the DataFrame to ensure sequential indexing
         df_reset = df.reset_index(drop=True)
@@ -67,8 +67,10 @@ def compute_score(compoundaisystems, data_df, metric):
 #            lambda row: ai_system.generate(row['query'], metric, row['true_answer']), axis=1)
 
         # Apply the function in parallel with a progress bar
-        data_df[f'answer_{name}'] = apply_multithreaded_with_progress_ordered(data_df, process_row, num_threads=20)
-
+        data_df[f'answer_{name}'] = apply_multithreaded_with_progress_ordered(data_df, process_row, num_threads=40)
+        data_df[f'{save_answer_prefix}_{name}'] = apply_multithreaded_with_progress_ordered(data_df, process_row, num_threads=40)
+        if(answer_convert):
+            data_df[f'{save_answer_prefix}_{name}'] = data_df[f'{save_answer_prefix}_{name}'].apply(answer_convert)
 
         # Use Parallel and delayed to apply the function to each row
         # Apply the function in parallel with a progress bar
@@ -83,7 +85,11 @@ def compute_score(compoundaisystems, data_df, metric):
 
         # Calculate scores using the specified metric
         #print(data_df)
-        data_df[f'score_{name}'] = data_df.progress_apply(lambda row: metric.get_score(row[f'answer_{name}'], row['true_answer']), axis=1)
+        if(true_answer_name not in data_df): # It is not there, try prefix
+            answer_name = f'{true_answer_name}_{name}'
+        else:
+            answer_name = true_answer_name
+        data_df[f'score_{name}'] = data_df.progress_apply(lambda row: metric.get_score(row[f'answer_{name}'], row[answer_name]), axis=1)
         
         # Compute the mean score for the current AI system
         mean_score = data_df[f'score_{name}'].mean()
@@ -213,12 +219,29 @@ def get_score_numeric(answer,true_answer):
 def get_score_matchone(answer,true_answer):
     return answer in true_answer
 
+def get_score_extract_matchone(answer,true_answer):
+    match = re.search(r"final answer:\s*(.+)", answer,re.IGNORECASE)
+    if match:
+        x = match.group(1)
+        return x in true_answer
+    else:
+        #print(f"cannot find final answer in {answer}")
+        return False
+#    return answer in true_answer
+
+
 import re
 
 def get_score_em_direct(answer, true_answer):        
     return 1 if remove_special_characters(
         answer.lower()
                                          ) == remove_special_characters(true_answer.lower()) else 0
+
+def get_score_answer_contain(answer, true_answer):        
+    for a in true_answer:
+         if (str(a).lower() in answer):
+           return 1
+    return 0 
 
 def get_score_em_llm(answer, true_answer, llm_model='gpt-4o-2024-05-13'):
     prompt = f'[answer]: [{answer}]\n[True answer]:[{true_answer}]. Generate "correct" if they are semantically equivalent, and "wrong" otherwise.'
@@ -277,5 +300,7 @@ metric_mapper = {
     "em_direct":get_score_em_direct,
     'numeric_match':get_score_numeric,
     'match_one':get_score_matchone,
+    'extract_match_one':get_score_extract_matchone,
     "em_LLM":get_score_em_llm,
+    "em_direct_contain":get_score_answer_contain,
 }

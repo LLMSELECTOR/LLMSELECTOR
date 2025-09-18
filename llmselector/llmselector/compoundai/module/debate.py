@@ -12,9 +12,13 @@ PROMPT_TEMPLATE_DEBATE='''[User Question]:{query}
 
 Using the reasoning from other agents as additional advice, can you give an updated answer? Examine your solution and that of the other agents. Then state your final answer concisely at the end in the form (X), for example (hello world).
 '''
+
 PROMPT_TEMPLATE_INITDEBATE='''Please answer the following question.
 [Question]: {query} 
 [Instruction]: Format your final answer concisely as (X), e.g., (hello world).
+'''
+
+DESCRIPTION_DEBATE_MULTIROUND = '''This compound AI system uses {total_module} modules to solve a question. The first {num_debator} modules generate initial answers respectively. Next, in each round of debate, {num_debator} modules debates with each other to update their answer based on the answer from the previous round of debates. This is repeated by {num_round} rounds. Finally, a majority vote is taken over the final round of answers to generate the ultimate answer to the original question.
 '''
 
 # Classes for debate
@@ -109,4 +113,48 @@ class MultiAgentDebate(CompoundAI):
                            [Debator(prompt_template_debate=PROMPT_TEMPLATE_DEBATE),[0,3,1,2]],
                            [Merge(regex=r'\(.*?\)'),[4,5,6]],
                            ]
+        return pipeline
+
+class MultiAgentDebateMultiRound(CompoundAI):
+    def __init__(self,
+                 description=DESCRIPTION_DEBATE_MULTIROUND,
+                 round=2,
+                 num_debator=3,
+                 prompt_template_debate=PROMPT_TEMPLATE_DEBATE,
+                 prompt_template_initdebate=PROMPT_TEMPLATE_INITDEBATE,
+                ):
+        super().__init__(description=description.format(total_module=num_debator*round,num_debator=num_debator,num_round=round))
+        self.round = round
+        self.num_debator = num_debator
+        self.prompt_template_debate = prompt_template_debate
+        self.prompt_template_initdebate = prompt_template_initdebate
+        self.create_pipeline(pipeline= self._get_pipeline())
+        pass
+        
+    def _get_pipeline(self):
+        pipeline = [["query",0]]
+        # initial answer generator
+        for i in range(self.num_debator):
+            pipeline.append(
+                [InitDebator(add_space=i,
+                            prompt_template_initdebate=self.prompt_template_initdebate),[0]],
+                            )
+        for i in range(self.round-1):
+            # create ids. Each element in cycled_ids is the input excluding 0.
+            input_ids = [i*self.num_debator+j+1 for j in range(self.num_debator)]
+            #cycled_ids = [input_ids[j:] + input_ids[:j] for j in range(len(input_ids))]
+            cycled_ids = [[input_ids[j]] + input_ids[:j] + input_ids[j+1:] for j in range(len(input_ids))]
+            
+            # generate input
+            for j in range(self.num_debator):
+                cycled_ids[j].insert(0,0)
+                input_with_query = cycled_ids[j]
+                print(f"input_with_query is {input_with_query}")
+                d_i_j = [Debator(prompt_template_debate=self.prompt_template_debate),input_with_query]
+                pipeline.append(d_i_j)
+        # append the merge component
+        i = self.round-1
+        input_ids = [i*self.num_debator+j+1 for j in range(self.num_debator)]
+        merge = [Merge(regex=r'\(.*?\)'),input_ids]
+        pipeline.append(merge)
         return pipeline
