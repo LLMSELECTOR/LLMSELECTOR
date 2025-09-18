@@ -103,7 +103,7 @@ More examples can be found in ```examples/```.
 
 To use LLMSELECTOR for your own compound AI systems and tasks, it is as easy as creating the systems and tasks and then invoking LLMSELECTOR.
 
-- Create your system: create the components and pipelines similar to SelfRefine defiend in ```compoundai/module/selfrefine```
+- Create your system: create the components and pipelines similar to SelfRefine defined in ```compoundai/module/selfrefine```
 
 - Create your task: create a DataLoader object similar to these in ```data_utils```
 
