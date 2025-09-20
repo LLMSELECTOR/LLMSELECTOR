@@ -48,6 +48,7 @@ def Get_Generate(prompt, model_gen,stop=None,
         Provider = MyAPI_OpenAI
 
     '''
+    #print(f"prompt is {prompt}")
     return Provider.get_response(text=prompt, model=model_gen,
                                          stop=stop)
     '''
@@ -58,13 +59,16 @@ def Get_Generate(prompt, model_gen,stop=None,
     #print(f"query iamge is {query_images}")
     while attempt < max_attempts:
         try:
-            return Provider.get_response(text=prompt, 
+            r1 = Provider.get_response(text=prompt, 
                                          model=model_gen,
                                          stop=stop,
                                         max_tokens=max_tokens,
                                          temperature=temperature,
                                          query_images=query_images,
                                         )
+            if(r1==None):
+                r1 = ""
+            return r1
         except Exception as e:
             attempt += 1
             if attempt < max_attempts:
@@ -173,11 +177,15 @@ class VLMService(object):
             #print("key is not found!")
             #print(f"key is _{key}_")
         #time1 = time.time()
+        #'''
         try:
             result = InMemCache[key]
         except:
             result = self.db[key]
             InMemCache[key] = result
+        #'''
+        #result = self.db[key]
+
         #print(f"time to load from db {time.time()-time1}")
         #time1 = time.time()
         extract_db(key,result)
@@ -302,10 +310,11 @@ class OpenAILLMService(VLMService):
         if(query_images):
             query_img_list = [img['raw'] for img in query_images]
             encoded_images = self.base64encode(query_img_list)
-            user_content.append(
+            for img1 in encoded_images:
+                user_content.append(
                 {
                     "type": "input_image",
-                    "image_url": f"data:image/png;base64,{encoded_images[0]}",
+                    "image_url": f"data:image/png;base64,{img1}",
                 })
 
         if(not(stop is None)):
@@ -353,6 +362,15 @@ class OpenAILLMService(VLMService):
         return text
 
 
+import re
+
+def split_with_level(s: str):
+    match = re.search(r'(low|minimal|medium|high)$', s)
+    if match:
+        return s[:match.start()], match.group()
+    else:
+        return s, "high"
+
 
 class OpenAILLMOService(OpenAILLMService):
     def __init__(self,db_name='all'):
@@ -369,8 +387,11 @@ class OpenAILLMOService(OpenAILLMService):
                      query_images=None,
                     ):
         #print(f"--stop is {stop}--")
+        model, effort = split_with_level(model)
         try: 
-            return self.load_response(text=text,model=model,max_tokens=max_tokens,temperature=temperature,
+            return self.load_response(text=text,
+                                      model=model+effort,
+                                      max_tokens=max_tokens,temperature=temperature,
                                      stop=stop,query_images=query_images)
         except:
             #print(f"load failed on {model} with text _{text} , directly run")
@@ -383,16 +404,20 @@ class OpenAILLMOService(OpenAILLMService):
         if(query_images):
             query_img_list = [img['raw'] for img in query_images]
             encoded_images = self.base64encode(query_img_list)
-            user_content.append(
+            for img1 in encoded_images:
+                user_content.append(
                 {
                     "type": "input_image",
-                    "image_url": f"data:image/png;base64,{encoded_images[0]}",
+                    "image_url": f"data:image/png;base64,{img1}",
                 })
 
         if(not(stop is None)):
             response = self.client.responses.create(
           model=model,
           stop=stop,
+            reasoning={
+    "effort": effort
+  },
         input=[
             {
           "role": "user",
@@ -411,13 +436,17 @@ class OpenAILLMOService(OpenAILLMService):
           "content": user_content,
         }
       ],
+        reasoning={
+    "effort": effort
+  },
       #max_completion_tokens=max_tokens,
 
     )
         res = response.model_dump_json()
         res = self.get_text(res) 
         self.save_response(text=text,
-                           model=model,max_tokens=max_tokens,
+                           model=model+effort,
+                           max_tokens=max_tokens,
                            temperature=temperature,
                            stop=stop,
                            response=res,
@@ -478,14 +507,15 @@ class AnthropicLLMService(VLMService):
                 query_img_list = [img['raw'] for img in query_images]
 
                 image1_data = [self.compress_and_base64encode(img) for img in query_img_list]
-                user_content.append({
+                for img1 in image1_data:
+                    user_content.append({
                     "type": "image",
                     "source": {
                         "type": "base64",
                         "media_type": "image/jpeg",
-                        "data": image1_data[0],
-                    },
-                })
+                        "data": img1,
+                        },
+                    })
 
             try:
                 response = self.client.messages.create(
@@ -520,6 +550,142 @@ class AnthropicLLMService(VLMService):
                                query_images=query_images,
                                temperature=temperature,response=response.content[0].text)
             return response.content[0].text
+
+
+class AnthropicLLMThinkService(VLMService):
+    def __init__(self,db_name='all'):
+        super(AnthropicLLMThinkService, self).__init__(db_name)        
+        self.client = anthropic.Anthropic(    
+            timeout=10000.0,
+            )
+        return
+        
+    def get_response(self, text, 
+                     model='claude-3-opus-20240229',
+                    max_tokens=1000,
+                    temperature=0.1,
+                     stop=None,
+                     query_images=None,
+
+                    ):
+        '''
+        #print("loading keys...")
+        res =  self.load_response(text=text,model=model,max_tokens=max_tokens,
+                                      temperature=temperature,
+                                      stop=stop,
+                                     )
+        #print("load key success")
+        '''
+        #print(f"stop is --{stop}--")
+        #print("text is",text)
+        model,effort = split_with_level(model)
+        try: 
+            res =  self.load_response(text=text,model=model+effort,max_tokens=max_tokens,
+                                      temperature=temperature,
+                                      stop=stop,
+                                      query_images=query_images,
+                                     )
+            #print("load cached!")
+            return res
+        except:
+            #print(f"load cache failed on {model}. Generate new")
+            #iled on {model} with text _{text}__, directly run-")
+            user_content = [{
+                        "type": "text",
+                        "text": f"{text}"
+                    }]
+            if(query_images):
+                #query_images = self.compress_and_base64encode(query_images) 
+                #print("too large; resize...")
+                #image1_data = self.base64encode(query_images=query_images)
+                query_img_list = [img['raw'] for img in query_images]
+
+                image1_data = [self.compress_and_base64encode(img) for img in query_img_list]
+                for img1 in image1_data:
+                    user_content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": img1,
+                        },
+                    })
+
+            if(1):
+            #try:
+                thinking={
+            "type": "enabled",
+            "budget_tokens": int(max_tokens*0.8)
+                }
+                
+                if(effort=='minimal'):
+                    thinking={
+                    "type": "disabled",
+                    #"budget_tokens": 0
+                    }
+                    # using minimal with thinking ::: {thinking}")
+                    response = self.client.messages.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    thinking=thinking,
+                    #temperature=temperature,
+                    stop_sequences=stop,
+                    messages=[
+                    {
+                        "role": "user",
+                        "content":user_content,
+                    }
+                    ],
+                    )
+                else:
+                    thinking={
+                    "type": "enabled",
+                    "budget_tokens": int(max_tokens*0.8)
+                    }
+                    response = self.client.messages.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    thinking=thinking,
+                    #temperature=temperature,
+                    stop_sequences=stop,
+                    messages=[
+                    {
+                        "role": "user",
+                        "content":user_content,
+                    }
+                    ],
+                    )
+                #print(f"complete the try with {thinking}")
+            #except:
+            else:
+                response = self.client.messages.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    #temperature=temperature,
+                
+                    messages=[
+                    {
+                        "role": "user",
+                        "content": user_content,
+                    }
+                ],
+                )
+
+            #print(f"the response is {response.content[0]}")
+            if(effort == 'minimal'):
+                text_output = response.content[0].text
+            else:
+                text_output = response.content[1].text
+
+            self.save_response(text=text,
+                               model=model+effort,
+                               max_tokens=max_tokens,
+                               stop=stop,
+                               query_images=query_images,
+                               temperature=temperature,response=text_output)
+            #print(f"the response is {response.content[0]}")
+            return text_output
+
 
 
 
@@ -635,8 +801,10 @@ class GeminiLLMService(VLMService):
         '''
         user_content=[]
         if(query_images):
-            img = query_images[0]['raw'] # self.compress_image_to_under_5mb_pil(image=query_images[0]) 
-            user_content.append(img)
+            for im_dict in query_images:
+                img = im_dict['raw']
+#            img = query_images[0]['raw'] # self.compress_image_to_under_5mb_pil(image=query_images[0]) 
+                user_content.append(img)
         user_content.append(text)
         response = self.client.models.generate_content(
                 model=model,
@@ -657,6 +825,98 @@ class GeminiLLMService(VLMService):
                            )
         return output_text
 
+
+
+class GeminiLLMThinkService(VLMService):
+    def __init__(self,db_name='all'):
+        super(GeminiLLMThinkService, self).__init__(db_name)        
+        client = genai.Client(api_key=os.environ["GEMINI_API_KEY"],
+                            http_options=types.HttpOptions(timeout=10000_000), # timeout is in milliseconds
+     
+                              )
+        #genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+        self.client =client
+        return
+    
+
+
+
+
+        
+    def get_response(self, text, 
+                     model='gpt-4o',
+                    max_tokens=1000,
+                    temperature=0.1,
+                     stop=None,
+                     query_images=None,
+
+                    ):
+        model, effort = split_with_level(model)
+        #print(f"--stop is {stop}--")
+        try: 
+            return self.load_response(text=text,model=model+effort,
+                                      max_tokens=max_tokens,temperature=temperature,
+                                     stop=stop,
+                                     query_images=query_images)
+        except:
+            #print(f"load failed on {model} with text _{text} , directly run")
+            pass
+        
+        '''
+        generation_config = {
+            "temperature": temperature,
+            "top_p": 1,
+            "top_k": 1,
+            "max_output_tokens": max_tokens,
+            "response_mime_type": "text/plain",
+            }
+        model_instance = genai.GenerativeModel(
+            model_name=model,
+        generation_config=generation_config,
+        )
+        chat_session = model_instance.start_chat(
+          history=[
+            ]
+        )
+        response = chat_session.send_message(text)
+        output_text = response.candidates[0].content.parts[0].text
+        '''
+        user_content=[]
+        if(query_images):
+            for im_dict in query_images:
+                img = im_dict['raw']
+#            img = query_images[0]['raw'] # self.compress_image_to_under_5mb_pil(image=query_images[0]) 
+                user_content.append(img)
+        user_content.append(text)
+        #print(f"Gemini max token is {max_tokens}")
+        thinking_budget = min(int(max_tokens*0.8),32767)
+        if(effort=='minimal'):
+            thinking_budget = 128
+            if(model=='gemini-2.5-flash-lite'):
+                thinking_budget=512
+        response = self.client.models.generate_content(
+                model=model,
+                contents=user_content,
+            config=types.GenerateContentConfig(
+            
+        thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
+
+        max_output_tokens=max_tokens,
+        temperature=temperature,
+    )
+
+                    )
+        output_text = response.text
+        self.save_response(text=text,
+                           model=model+effort,
+                           max_tokens=max_tokens,
+                           temperature=temperature,
+                           stop=stop,
+                           response=output_text,
+                           query_images=query_images,
+                           )
+        return output_text
+    
 '''
 MyAPI_OpenAI = OpenAILLMService(db_name=os.getenv('TASK_NAME'))
 MyAPI_Anthropic = AnthropicLLMService(db_name=os.getenv('TASK_NAME'))
@@ -699,8 +959,12 @@ def initialize_services(task_name="test"):
     MyAPI_OpenAI = OpenAILLMService(db_name=task_name)
     MyAPI_OpenAIO = OpenAILLMOService(db_name=task_name)
     MyAPI_Anthropic = AnthropicLLMService(db_name=task_name)
+    MyAPI_AnthropicThink = AnthropicLLMThinkService(db_name=task_name)
+
     MyAPI_Together = TogetherAILLMService(db_name=task_name)
     MyAPI_Google = GeminiLLMService(db_name=task_name)
+    MyAPI_GoogleThink = GeminiLLMThinkService(db_name=task_name)
+
 
     # Update model_provider_mapper
     model_provider_mapper = {
@@ -710,11 +974,26 @@ def initialize_services(task_name="test"):
         "gpt-4o-mini-2024-07-18": MyAPI_OpenAI,
         'gpt-4o-2024-05-13': MyAPI_OpenAI,
         'gpt-4o-2024-08-06': MyAPI_OpenAI,
+        'gpt-5-2025-08-07':MyAPI_OpenAIO,
+        "o3-2025-04-16":MyAPI_OpenAIO,
+        'gpt-5-2025-08-07low':MyAPI_OpenAIO,
+        'gpt-5-2025-08-07minimal':MyAPI_OpenAIO,
+        'gpt-5-mini-2025-08-07minimal':MyAPI_OpenAIO,
+        'gpt-5-nano-2025-08-07minimal':MyAPI_OpenAIO,
+        "o3-2025-04-16low":MyAPI_OpenAIO,
+        'gpt-5-2025-08-07high':MyAPI_OpenAIO,
+        "o3-2025-04-16high":MyAPI_OpenAIO,
+        
         "o1-mini-2024-09-12": MyAPI_OpenAIO,
         "o3-mini-2025-01-31":MyAPI_OpenAIO,
         "o1-2024-12-17":MyAPI_OpenAIO,
         'claude-3-5-sonnet-20240620': MyAPI_Anthropic,
         'claude-3-haiku-20240307': MyAPI_Anthropic,
+        'claude-opus-4-1-20250805':MyAPI_AnthropicThink,
+        'claude-opus-4-1-20250805minimal':MyAPI_AnthropicThink,
+        'claude-opus-4-1-20250805high':MyAPI_AnthropicThink,
+        'claude-sonnet-4-20250514minimal':MyAPI_AnthropicThink,
+        'claude-3-5-haiku-20241022':MyAPI_AnthropicThink,
         'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo': MyAPI_Together,
         'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo': MyAPI_Together,
         "deepseek-ai/DeepSeek-R1":MyAPI_Together,
@@ -727,6 +1006,12 @@ def initialize_services(task_name="test"):
         'gemini-2.0-flash-exp': MyAPI_Google,
         'gemini-1.5-flash-8b': MyAPI_Google,
         'gemini-2.0-flash':MyAPI_Google,
+        'gemini-2.5-pro': MyAPI_GoogleThink,
+        'gemini-2.5-prolow': MyAPI_GoogleThink,
+        'gemini-2.5-prominimal': MyAPI_GoogleThink,
+        'gemini-2.5-prohigh': MyAPI_GoogleThink,
+        'gemini-2.5-flashminimal':MyAPI_GoogleThink,
+        'gemini-2.5-flash-liteminimal':MyAPI_GoogleThink,
     }
 
 # Initialize services when the module is loaded

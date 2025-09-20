@@ -83,18 +83,20 @@ class MajorityVoteofN(CompoundAI):
                  gen_prompt = GEN_PROMPT,
                  merge_regex= r'\A(.*)\Z',
                  N=5,
+                 max_tokens=1000,
                 ):
         super().__init__(description=description)
         self.gen_prompt = gen_prompt
         self.N=N
         self.merge_regex = merge_regex
+        self.max_tokens = max_tokens
         self.create_pipeline(pipeline= self._get_pipeline())        
         pass
         
     def _get_pipeline(self):
         pipeline = [["query",0]]
         for i in range(self.N):
-            pipeline.append([Generator(add_space=i,gen_prompt=self.gen_prompt),[0]])               
+            pipeline.append([Generator(add_space=i,gen_prompt=self.gen_prompt,max_tokens=self.max_tokens),[0]])               
         pipeline.append( [Merge(regex=self.merge_regex,remove_left=0,remove_right=0),list(range(1,self.N+1))] ) 
                            
         return pipeline

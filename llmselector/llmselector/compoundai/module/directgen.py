@@ -60,19 +60,23 @@ class Generator(Module):
                             max_tokens=self.max_tokens,
                            )
         #print(f'gen time is {time.time()-time1}')
+        if(r1 == None):
+            r1 = ""
         return r1
     
 class DirectGen(CompoundAI):
     def __init__(self,
                  description="This directly generates answers from the prompt",
                  save_history_flag=True,
+                 max_tokens=1000,
                 ):
+        self.max_tokens = max_tokens
         super().__init__(description=description,save_history_flag=save_history_flag)
         self.create_pipeline(pipeline= self._get_pipeline())
         pass
         
     def _get_pipeline(self):
         pipeline = [["query",0],
-                    [Generator(),[0]],
+                    [Generator(max_tokens=self.max_tokens),[0]],
                     ]
         return pipeline
