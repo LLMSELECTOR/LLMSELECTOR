@@ -5,3 +5,7 @@ from .tablebias import DataLoader_TableBias
 from .scifibench import DataLoader_SciFIBench
 from .mmmu import DataLoader_MMMU
 from .mathvista import DataLoader_MathVista
+from .bbeh import DataLoader_BBEQ
+from .medcal import DataLoader_MedCal
+from .mmlupro import DataLoader_MMLUPro
+from .supergpqa import DataLoader_SuperGPQA

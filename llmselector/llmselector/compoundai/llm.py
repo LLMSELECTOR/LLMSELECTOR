@@ -34,6 +34,7 @@ os.environ['GEMINI_API_KEY'] = "gemini_api_key"
 
 InMemCache = {}
 
+sleep_time = 10
 def Get_Generate(prompt, model_gen,stop=None,
                 max_tokens=1000,
                  temperature=0.1,
@@ -41,6 +42,7 @@ def Get_Generate(prompt, model_gen,stop=None,
                 ):
     max_attempts = 3
     attempt = 0
+    #print(f'Get_Generate::: model is {model_gen}')
     #print(f"--models and stop {model_gen} and {stop}-- ")
     if model_gen in model_provider_mapper:
         Provider = model_provider_mapper[model_gen]
@@ -50,7 +52,8 @@ def Get_Generate(prompt, model_gen,stop=None,
     '''
     #print(f"prompt is {prompt}")
     return Provider.get_response(text=prompt, model=model_gen,
-                                         stop=stop)
+                                         stop=stop,
+                                         max_tokens=max_tokens)
     '''
     if(type(prompt)==dict):
         query_images = prompt['query_images']
@@ -72,8 +75,8 @@ def Get_Generate(prompt, model_gen,stop=None,
         except Exception as e:
             attempt += 1
             if attempt < max_attempts:
-                print(f"Attempt {attempt} failed with error: {e}. Query is {prompt}. Retrying in 10 seconds...")
-                time.sleep(10)
+                print(f"Attempt {attempt} failed with error: {e}. Query is {prompt}. Retrying in {sleep_time} seconds...")
+                time.sleep(sleep_time)
             else:
                 print(f"Attempt {attempt} failed with error: {e}. No more retries left.")
                 return f"cannot answer due to {e}"
@@ -292,6 +295,7 @@ class OpenAILLMService(VLMService):
                      stop=None,
                      query_images=None,
                     ):
+        #print(f'model is {model}')
         #print(f"--stop is {stop}--")
         try: 
             #time1 = time.time()
@@ -386,6 +390,7 @@ class OpenAILLMOService(OpenAILLMService):
                      stop=None,
                      query_images=None,
                     ):
+        #print(f'model is {model}')
         #print(f"--stop is {stop}--")
         model, effort = split_with_level(model)
         try: 
@@ -463,8 +468,11 @@ import anthropic
 
 class AnthropicLLMService(VLMService):
     def __init__(self,db_name='all'):
+        self.max_allowed_tokens = 5000
         super(AnthropicLLMService, self).__init__(db_name)        
-        self.client = anthropic.Anthropic()
+        self.client = anthropic.Anthropic(            
+            timeout=1000.0,    
+)
         return
         
     def get_response(self, text, 
@@ -485,6 +493,8 @@ class AnthropicLLMService(VLMService):
         '''
         #print(f"stop is --{stop}--")
         #print("text is",text)
+        if(max_tokens>self.max_allowed_tokens):
+            max_tokens = self.max_allowed_tokens
         try: 
             res =  self.load_response(text=text,model=model,max_tokens=max_tokens,
                                       temperature=temperature,
@@ -673,7 +683,14 @@ class AnthropicLLMThinkService(VLMService):
 
             #print(f"the response is {response.content[0]}")
             if(effort == 'minimal'):
-                text_output = response.content[0].text
+                #print(f"use content[0], ")
+                #print(f"response is {response}")
+                if(len(response.content)==0):
+                    text_output = ""
+                else:
+                    text_output = response.content[0].text
+    #            print(f"end of use content[0], ")
+
             else:
                 text_output = response.content[1].text
 
@@ -993,7 +1010,7 @@ def initialize_services(task_name="test"):
         'claude-opus-4-1-20250805minimal':MyAPI_AnthropicThink,
         'claude-opus-4-1-20250805high':MyAPI_AnthropicThink,
         'claude-sonnet-4-20250514minimal':MyAPI_AnthropicThink,
-        'claude-3-5-haiku-20241022':MyAPI_AnthropicThink,
+        'claude-3-5-haiku-20241022':MyAPI_Anthropic,
         'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo': MyAPI_Together,
         'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo': MyAPI_Together,
         "deepseek-ai/DeepSeek-R1":MyAPI_Together,

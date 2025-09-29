@@ -23,6 +23,8 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+logger.setLevel(logging.INFO)
+
 if not logger.hasHandlers():  # Prevent duplicate handlers when re-importing
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
@@ -55,6 +57,7 @@ class Optimizer(object):
                  allocator = AllocatorFixChain,
                  critic = CriticNaive,
                  verbose = False,
+                 seed=0,
                 ):
         self.models = model_list
         self.max_budget=max_budget
@@ -64,6 +67,7 @@ class Optimizer(object):
         self.allocator = allocator
         self.critic = critic
         self.verbose = verbose
+        self.seed = seed
         pass
         
     def optimize(self,
@@ -115,6 +119,12 @@ class Optimizer(object):
         self.max_budget = max_budget
         return max_budget
 
+    def set_seed(self,
+                   seed=1000,
+                  ):
+        self.seed = seed
+        return seed
+    
     def set_models(self,
              combo,
              compoundaisystem,
@@ -137,6 +147,7 @@ class OptimizerFullSearch(Optimizer):
         # compute the score for all combinations
         T = len(compoundaisystem.get_pipeline())-1 # number of components
         all_permutations = list(product(self.models, repeat=T))
+        random.seed(self.seed)
         random.shuffle(all_permutations)
         all_permutations = all_permutations[0:self.max_budget]
         # scores = [(combo, compute_score(combo)) for combo in tqdm(all_permutations)]       
@@ -185,7 +196,7 @@ class OptimizerLLMDiagnoser(Optimizer):
                  
                  judge_model = 'claude-3-5-sonnet-20240620',
                  diag_model = 'gemini-1.5-pro',
-                 seed = 0,
+                 seed = None,
                  beta = 1,
                  alpha = 0, # no diagnoser
                  get_answer=0,
@@ -202,6 +213,8 @@ class OptimizerLLMDiagnoser(Optimizer):
                  verbose = verbose)
         self.judge_model = judge_model
         self.diag = Diagnoser(diag_model)
+        if(seed == None):    
+            seed = self.seed
         random.seed(seed)
         self.beta = beta
         self.alpha = alpha
@@ -260,6 +273,7 @@ class OptimizerLLMDiagnoser(Optimizer):
             return list(mode)  # Convert the mode back into a list (if required)
         
         # initialization
+        random.seed(self.seed)
         L = len(compoundaisystem.get_pipeline())-1
         c = 0
         M = len(self.models)-1
@@ -271,6 +285,8 @@ class OptimizerLLMDiagnoser(Optimizer):
             allocator = init_mi
         allocator_list = [allocator]
         while(c<=B-M and delta == 0):
+            print(f"current budget is {c}")
+            logger.critical(f"current allocation trace is: {allocator_list} with valid steps {len(allocator_list)-L-1}")
             print(allocator_list) if self.verbose else None
             # choose a module to optimize
             module_idx = self.update_module(iter=iter,L=L)
@@ -279,6 +295,8 @@ class OptimizerLLMDiagnoser(Optimizer):
             # aggregate to one allocation
             allocator, allocator_list = aggregateallocation(allocations,allocator_list)
             print(f"----allocation list---- {allocator_list}") if self.verbose else None
+            
+
             # check for stopping criteria
             c += M
             delta = check_last_elements_same(allocator_list,T=L+1)
@@ -382,6 +400,8 @@ class OptimizerLLMDiagnoser(Optimizer):
         return score*self.beta + self.alpha*score_diagnoser
         
     def diagnose(self, training_df, metric, compoundaisystem,  allocated_model,module_idx):
+        #logger.critical(f"diagnose with model: {self.diag.diagnoise_model} ")
+
         error, analysis = self.get_score_LLM_onequery(training_df.iloc[0],compoundaisystem,module_idx=module_idx)
         #print(f"allocated model:: {allocated_model} and diag index {module_idx}") if self.verbose else None
         #print(analysis) if self.verbose else None

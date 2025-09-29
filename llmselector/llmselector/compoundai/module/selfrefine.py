@@ -22,27 +22,31 @@ PROMPT_TEMPLATE_REFINE =  "The below is a question, an initial answer, and some 
 class Refiner(Module):
     def __init__(self,
                 prompt_template_refine= PROMPT_TEMPLATE_REFINE,
+                max_tokens = 1000,
                 ):
         self.prompt_template_refine = prompt_template_refine
         self.model = DEFAULT_MODEL
+        self.max_tokens = max_tokens
         return
         
     def get_response(self,task, answer, feedback):
         refine_prompt = self.prompt_template_refine.format(
             task=task,feedback=feedback,answer=answer)
-        return Get_Generate(refine_prompt,self.model) 
+        return Get_Generate(refine_prompt,self.model,max_tokens=self.max_tokens) 
     
 class Critic(Module):
     def __init__(self,
                 prompt_template_feedback= PROMPT_TEMPLATE_FEEDBACK,
+                max_tokens=1000,
                 ):
         self.prompt_template_feedback = prompt_template_feedback
         self.model = DEFAULT_MODEL
+        self.max_tokens = max_tokens
         return
     def get_response(self, task, answer):
         feedback_prompt = self.prompt_template_feedback.format(
             task=task,answer=answer)
-        return Get_Generate(feedback_prompt,self.model) 
+        return Get_Generate(feedback_prompt,self.model,max_tokens=self.max_tokens) 
 
 class Generator(Module):
     def get_response(self,query):
@@ -75,22 +79,24 @@ class SelfRefineMultiRound(CompoundAI):
                  description=DESCRIPTION_SELFREFINE,
                  prompt_template_feedback=PROMPT_TEMPLATE_FEEDBACK,
                  prompt_template_refine=PROMPT_TEMPLATE_REFINE,
+                 max_tokens = 1000,
                  round=1,
                 ):
         super().__init__(description=description)
         self.prompt_template_feedback = prompt_template_feedback
         self.prompt_template_refine = prompt_template_refine
         self.round = round
+        self.max_tokens = max_tokens
         self.create_pipeline(pipeline= self._get_pipeline())
         pass
         
     def _get_pipeline(self):
         pipeline = [["query",0],
-                    [Generator(),[0]],
+                    [Generator(max_tokens=self.max_tokens),[0]],
                     ]
         for i in range(self.round):
-            c1 = [Critic(prompt_template_feedback=self.prompt_template_feedback),[0,2*i+1]]           
-            r1 = [Refiner(prompt_template_refine=self.prompt_template_refine), [0,2*i+1,2*i+2]]
+            c1 = [Critic(prompt_template_feedback=self.prompt_template_feedback,max_tokens=self.max_tokens),[0,2*i+1]]           
+            r1 = [Refiner(prompt_template_refine=self.prompt_template_refine,max_tokens=self.max_tokens), [0,2*i+1,2*i+2]]
             pipeline.append(c1)
             pipeline.append(r1)
         return pipeline

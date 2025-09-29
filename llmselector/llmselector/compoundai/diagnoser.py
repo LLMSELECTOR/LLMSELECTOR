@@ -105,6 +105,7 @@ class Diagnoser(object):
             #print(f"answer is {answer}")
             print(f'***prompt*** {prompt}')
         #return 0
+        #print(f"self.diagnoise_model is {self.diagnoise_model}")
         analysis = Get_Generate(prompt,self.diagnoise_model,temperature=temperature)
         #print(f"analysis is {analysis}")
 #        error = re.search(r'error:\s*(0|1)', analysis, re.IGNORECASE)

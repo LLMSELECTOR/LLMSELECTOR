@@ -186,6 +186,90 @@ def compute_tag(compoundaisystems, data_df, metric, tag='iter'):
         
     return data_df
     
+
+
+def strip_latex(response: str) -> str:
+  if response.startswith("$") and response.endswith("$"):
+    response = response[1:-1]
+  if "boxed{" in response and response.endswith("}"):
+    response = response[0:-1].split("boxed{")[1]
+  if "text{" in response and response.endswith("}"):
+    response = response[0:-1].split("text{")[1]
+  if "texttt{" in response and response.endswith("}"):
+    response = response[0:-1].split("texttt{")[1]
+  return response
+
+
+def extract_answer(sample: str) -> str:
+  """Extracts the final answer from the sample."""
+  answer_prefixes = [
+      "The answer is:",
+      "The final answer is ",
+      "The final answer is: ",
+      "The answer is "
+  ]
+  answer = sample.lower()
+  for answer_prefix in answer_prefixes:
+    answer_prefix = answer_prefix.lower()
+    if answer_prefix in answer:
+      answer = answer.split(answer_prefix)[-1].strip()
+  if answer.endswith("."):
+    answer = answer[:-1]
+  return strip_latex(answer)
+
+def fuzzy_match(prediction: str, reference: str) -> bool:
+  """Fuzzy match function for BigBench Extra Hard."""
+  if prediction == reference:
+    return True
+
+  # (a) vs a
+  if len(prediction) == 3 and prediction[0] == "(" and prediction[-1] == ")":
+    return prediction[1] == reference
+  if len(reference) == 3 and reference[0] == "(" and reference[-1] == ")":
+    return reference[1] == prediction
+
+  # Numbers
+  try:
+    if float(prediction) == float(reference):
+      return True
+  except ValueError:
+    pass
+
+  # quote issues
+  if prediction.replace("'", "") == reference.replace("'", ""):
+    return True
+
+  # Bracket issues
+  if f"[{reference}]" == prediction or f"[{prediction}]" == reference:
+    return True
+
+  # Question mark issues
+  if prediction.endswith("?") and prediction[:-1] == reference:
+    return True
+
+  return False
+
+
+def preprocess_sample(sample: str) -> str:
+  prediction = extract_answer(sample.strip()).lower()
+  prediction = prediction.replace(", ", ",").replace("**", "")
+  prediction = prediction.split("\n")[0]
+  prediction = prediction[0:-1] if prediction.endswith(".") else prediction
+  return prediction
+
+
+def preprocess_reference(reference: str) -> str:
+  reference = reference.strip().lower()
+  reference = reference.replace(", ", ",")
+  return reference
+
+
+def evaluate_correctness(sample: str, reference: str) -> bool:
+  prediction = preprocess_sample(sample)
+  reference = preprocess_reference(reference)
+  return fuzzy_match(prediction, reference)
+
+
 class Metric(object):
     def __init__(self,name='mc'):
         self.name = name
@@ -291,7 +375,12 @@ def extract_final_numeric_answer(text):
         numeric_value = match.group(1)
         return float(numeric_value)  # Ensure it's converted to float
     return 0
-    
+
+
+def get_score_fuzzymatch(answer,true_answer):
+    return evaluate_correctness(answer,true_answer)
+
+
 metric_mapper = {
     "mc":get_score_MC,
     "concept":get_score_concept_binary,
@@ -303,4 +392,6 @@ metric_mapper = {
     'extract_match_one':get_score_extract_matchone,
     "em_LLM":get_score_em_llm,
     "em_direct_contain":get_score_answer_contain,
+    "fuzzy_match":get_score_fuzzymatch,
+
 }

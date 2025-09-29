@@ -66,6 +66,10 @@ class DataLoader_MathVista(object):
         df = pd.DataFrame(q_list, columns=['query', 'true_answer', 'image', 'ID'])
         self.df = df
         df = df[df.apply(is_image_small_enough,axis=1)]
+        df = df[df["ID"] != "566"]
+        df = df[df["ID"] != "935"]
+        df = df[df["ID"] != "749"]
+        df = df[df["ID"] != "958"]
         return df
     
     def get_image_hash(self, img):
@@ -93,3 +97,37 @@ def extract_image_tags(text):
     """
     matches = re.findall(r'<image (\d+)>', text)
     return [f'image_{i}' for i in matches]
+
+
+''' Remove policy error
+for a in range(len(q_data)):
+    t = q_data.iloc[a]
+    text = t['query']['text']
+    if ('如图，已知△ABC≌△DEF，CD平分∠BCA，若∠A＝22°，∠CGF＝88°' in text):
+        print(t['query']['text'])
+        print(t)
+
+for a in range(len(q_data)):
+    t = q_data.iloc[a]
+    text = t['query']['text']
+    if ('如图，在ABCD中，AD＝6，AB＝4，DE平分∠ADC交BC于点E，则BE的长是' in text):
+        print(t['query']['text'])
+        print(t)
+
+for a in range(len(q_data)):
+    t = q_data.iloc[a]
+    text = t['query']['text']
+    if ('△ABC, DE ∥ BC, if AB = 7.0, AC = 5.0, AD = 3.0, then DE = ()' in text):
+        print(t['query']['text'])
+        print(t)
+
+for a in range(len(q_data)):
+    t = q_data.iloc[a]
+    text = t['query']['text']
+    if ('Choose the missing letters from below to form a word, using all letters presented' in text):
+        print(t['query']['text'])
+        print(t)
+
+
+
+'''
