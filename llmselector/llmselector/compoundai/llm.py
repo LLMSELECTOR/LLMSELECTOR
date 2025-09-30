@@ -31,6 +31,7 @@ os.environ['OPENAI_API_KEY'] = "openai_api_key"
 os.environ['ANTHROPIC_API_KEY'] = "anthropic_api_key" 
 os.environ['TOGETHER_API_KEY'] = "together_ai_api_key"
 os.environ['GEMINI_API_KEY'] = "gemini_api_key"
+os.environ['DB_EXTRACT'] = 'False'
 
 InMemCache = {}
 
@@ -93,10 +94,12 @@ def my_encode(obj):
 def my_decode(obj):
     return pickle.loads(zlib.decompress(bytes(obj)))
 
-#tentative_db = SqliteDict("temp.sqlite",encode=my_encode, decode=my_decode)
+tentative_db = SqliteDict("temp.sqlite",encode=my_encode, decode=my_decode)
 
 def extract_db(key, value):
-    return # remove this if you want to extract the cache
+    if(eval(os.getenv('DB_EXTRACT'))==False):
+#    if(1):
+        return # remove this if you want to extract the cache
     tentative_db[key] = value
     tentative_db.commit()
     return
